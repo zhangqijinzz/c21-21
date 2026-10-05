@@ -148,7 +148,12 @@ export default function ArchivePanel({
               <Trash2 size={18} />
             </span>
             <h2 id="delete-project-title">删除这个链路项目？</h2>
-            <p>“{pendingDelete.title}”及其方案快照将从此设备移除。</p>
+            <p>
+              “{pendingDelete.title}”将从此设备移除：
+              {pendingDelete.nodes.length} 个请求节点、
+              {pendingDelete.scenarios.length} 份方案快照一并删除，
+              此操作不可撤销。
+            </p>
             <div>
               <button
                 className="button button-neutral"

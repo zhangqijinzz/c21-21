@@ -2210,6 +2210,48 @@ button:disabled {
   gap: 8px;
   margin-top: 20px;
 }
+.dialog-impact {
+  margin-top: 12px;
+  padding: 10px 12px;
+  background: #fbf7e9;
+  border: 1px solid #f0e8ca;
+  border-radius: 8px;
+}
+.dialog-impact > strong {
+  display: block;
+  color: #8a7541;
+  font-size: 9px;
+}
+.dialog-impact p {
+  margin-top: 4px;
+  color: #97865a;
+  font-size: 9px;
+  line-height: 1.6;
+}
+.dialog-impact ul {
+  margin: 6px 0 0;
+  padding-left: 15px;
+  color: #97865a;
+  font-size: 9px;
+  line-height: 1.7;
+}
+.restore-icon {
+  color: #6d8e49;
+  background: #eef4e0;
+}
+.snapshot-drift {
+  display: inline-block;
+  margin-top: 5px;
+  padding: 3px 6px;
+  color: #9c7849;
+  background: #f8f0e5;
+  border-radius: 4px;
+  font-size: 7px;
+}
+.snapshot-drift.in-sync {
+  color: #78964e;
+  background: #f0f5e5;
+}
 .button-neutral {
   color: #59675e;
   background: #f7f8f5;

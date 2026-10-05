@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Trash2 } from "lucide-react";
 import type { LatencyProject, RequestNode } from "../../shared/domain/types";
 import type { EditableNodeField } from "./graphViewModel";
+import { describeNodeDeletionImpact } from "../scenarios/scenarioViewModel";
 
 interface Props {
   project: LatencyProject;
@@ -33,6 +34,7 @@ export default function NodeInspector({
   onDependency,
 }: Props) {
   const [pendingDelete, setPendingDelete] = useState(false);
+  const deleteImpact = describeNodeDeletionImpact(project, node.id);
   return (
     <>
       <aside className="inspector">
@@ -132,7 +134,24 @@ export default function NodeInspector({
               <Trash2 size={18} />
             </span>
             <h2 id="delete-node-title">移除这个请求节点？</h2>
-            <p>“{node.name}”会从链路移除，其他节点对它的依赖也会清除。</p>
+            <p>
+              “{node.name}”会从链路移除
+              {deleteImpact.dependentNames.length
+                ? `，${deleteImpact.dependentNames.join("、")} 对它的依赖或降级引用也会清除`
+                : ""}
+              。
+            </p>
+            {deleteImpact.scenarioNames.length > 0 && (
+              <div className="dialog-impact">
+                <strong>
+                  影响 {deleteImpact.scenarioNames.length} 份方案快照
+                </strong>
+                <p>
+                  {deleteImpact.scenarioNames.join("、")}{" "}
+                  仍包含该节点；之后恢复这些快照会把它带回链路。
+                </p>
+              </div>
+            )}
             <div>
               <button
                 className="button button-neutral"

@@ -11,7 +11,11 @@ import type {
   LatencyProject,
   ScenarioSnapshot,
 } from "../../shared/domain/types";
-import type { ScenarioComparison } from "./scenarioViewModel";
+import {
+  describeRestoreImpact,
+  getSnapshotDrift,
+  type ScenarioComparison,
+} from "./scenarioViewModel";
 
 interface Props {
   project: LatencyProject;
@@ -43,6 +47,17 @@ export default function ScenarioPanel({
   onSelectComparison,
 }: Props) {
   const [name, setName] = useState("");
+  const [pendingRestore, setPendingRestore] = useState<ScenarioSnapshot | null>(
+    null,
+  );
+  const restoreImpact = pendingRestore
+    ? describeRestoreImpact(project, pendingRestore.id)
+    : undefined;
+  const restoreInSync =
+    restoreImpact &&
+    restoreImpact.inSync &&
+    !restoreImpact.changed.length &&
+    !restoreImpact.concurrencyChange;
   const delta = comparisonResult?.deltaMs ?? 0;
   const outcome = comparisonResult?.outcome ?? "equal";
   const changes = comparisonResult?.changes ?? [];
@@ -160,45 +175,64 @@ export default function ScenarioPanel({
               <span className="section-label">已保存快照</span>
               <span>{project.scenarios.length} 个方案</span>
             </div>
-            {project.scenarios.map((scenario) => (
-              <div className="snapshot-row" key={scenario.id}>
-                <span className="snapshot-badge">S</span>
-                <div className="snapshot-info">
-                  <strong>{scenario.name}</strong>
-                  <small>
-                    {new Date(scenario.createdAt).toLocaleString("zh-CN", {
-                      month: "numeric",
-                      day: "numeric",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}{" "}
-                    ·{" "}
-                    {scenario.concurrencyLimit
-                      ? `${scenario.concurrencyLimit} 路并发`
-                      : "不限并发"}
-                  </small>
+            {project.scenarios.map((scenario) => {
+              const drift = getSnapshotDrift(project, scenario);
+              return (
+                <div className="snapshot-row" key={scenario.id}>
+                  <span className="snapshot-badge">S</span>
+                  <div className="snapshot-info">
+                    <strong>{scenario.name}</strong>
+                    <small>
+                      {new Date(scenario.createdAt).toLocaleString("zh-CN", {
+                        month: "numeric",
+                        day: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}{" "}
+                      ·{" "}
+                      {scenario.concurrencyLimit
+                        ? `${scenario.concurrencyLimit} 路并发`
+                        : "不限并发"}
+                    </small>
+                    <span
+                      className={`snapshot-drift ${drift.inSync ? "in-sync" : ""}`}
+                    >
+                      {drift.inSync
+                        ? "与当前图一致"
+                        : [
+                            drift.missingInGraph.length
+                              ? `含 ${drift.missingInGraph.length} 个已删节点`
+                              : "",
+                            drift.notInSnapshot.length
+                              ? `少 ${drift.notInSnapshot.length} 个当前节点`
+                              : "",
+                          ]
+                            .filter(Boolean)
+                            .join(" · ")}
+                    </span>
+                  </div>
+                  <b className="snapshot-time">
+                    {formatDuration(scenario.completionMs)}
+                  </b>
+                  <button
+                    className="icon-button"
+                    title="恢复此方案"
+                    aria-label={`恢复方案 ${scenario.name}`}
+                    onClick={() => setPendingRestore(scenario)}
+                  >
+                    <RotateCcw size={14} />
+                  </button>
+                  <button
+                    className="icon-button danger-button"
+                    title="删除方案"
+                    aria-label={`删除方案 ${scenario.name}`}
+                    onClick={() => onRemove(scenario.id)}
+                  >
+                    <Trash2 size={14} />
+                  </button>
                 </div>
-                <b className="snapshot-time">
-                  {formatDuration(scenario.completionMs)}
-                </b>
-                <button
-                  className="icon-button"
-                  title="恢复此方案"
-                  aria-label={`恢复方案 ${scenario.name}`}
-                  onClick={() => onRestore(scenario.id)}
-                >
-                  <RotateCcw size={14} />
-                </button>
-                <button
-                  className="icon-button danger-button"
-                  title="删除方案"
-                  aria-label={`删除方案 ${scenario.name}`}
-                  onClick={() => onRemove(scenario.id)}
-                >
-                  <Trash2 size={14} />
-                </button>
-              </div>
-            ))}
+              );
+            })}
           </div>
           {changes.length > 0 && (
             <div className="change-summary">
@@ -209,6 +243,81 @@ export default function ScenarioPanel({
             </div>
           )}
         </>
+      )}
+      {pendingRestore && restoreImpact && (
+        <div className="dialog-backdrop" role="presentation">
+          <div
+            className="confirm-dialog"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="restore-scenario-title"
+          >
+            <span className="dialog-icon restore-icon">
+              <RotateCcw size={18} />
+            </span>
+            <h2 id="restore-scenario-title">
+              恢复方案「{pendingRestore.name}」？
+            </h2>
+            <p>当前链路会被该快照覆盖，恢复前请确认差异。</p>
+            {restoreInSync ? (
+              <div className="dialog-impact">
+                <strong>与当前图一致</strong>
+                <p>节点与参数没有差异，恢复后内容不变。</p>
+              </div>
+            ) : (
+              <div className="dialog-impact">
+                <strong>本次恢复的影响</strong>
+                <ul>
+                  {restoreImpact.missingInGraph.length > 0 && (
+                    <li>
+                      带回 {restoreImpact.missingInGraph.length} 个已删除节点：
+                      {restoreImpact.missingInGraph
+                        .map((node) => node.name)
+                        .join("、")}
+                    </li>
+                  )}
+                  {restoreImpact.notInSnapshot.length > 0 && (
+                    <li>
+                      移除 {restoreImpact.notInSnapshot.length} 个当前节点：
+                      {restoreImpact.notInSnapshot
+                        .map((node) => node.name)
+                        .join("、")}
+                    </li>
+                  )}
+                  {restoreImpact.changed.length > 0 && (
+                    <li>
+                      覆盖 {restoreImpact.changed.length} 项参数差异：
+                      {restoreImpact.changed.slice(0, 3).join("；")}
+                      {restoreImpact.changed.length > 3
+                        ? ` 等 ${restoreImpact.changed.length} 项`
+                        : ""}
+                    </li>
+                  )}
+                  {restoreImpact.concurrencyChange && (
+                    <li>{restoreImpact.concurrencyChange}</li>
+                  )}
+                </ul>
+              </div>
+            )}
+            <div>
+              <button
+                className="button button-neutral"
+                onClick={() => setPendingRestore(null)}
+              >
+                取消
+              </button>
+              <button
+                className="button button-primary"
+                onClick={() => {
+                  onRestore(pendingRestore.id);
+                  setPendingRestore(null);
+                }}
+              >
+                恢复方案
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </section>
   );

@@ -21,9 +21,11 @@ import {
 } from "../graph-editor/graphViewModel";
 import {
   compareScenarios,
+  describeRestoreImpact,
   removeScenario,
   restoreScenario,
   saveScenario,
+  summarizeRestore,
   type ScenarioComparison,
 } from "../scenarios/scenarioViewModel";
 import { removeProject, updateProject } from "../projects/projectViewModel";
@@ -256,7 +258,10 @@ export function useLatencyLab() {
   );
   const restoreSavedScenario = useCallback(
     (id: string) => {
-      if (activeProject) editProject(restoreScenario(activeProject, id));
+      if (!activeProject) return;
+      const impact = describeRestoreImpact(activeProject, id);
+      editProject(restoreScenario(activeProject, id));
+      if (impact) setNotice(summarizeRestore(impact));
     },
     [activeProject, editProject],
   );
