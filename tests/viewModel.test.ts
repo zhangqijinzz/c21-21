@@ -6,8 +6,11 @@ import {
 } from "../src/features/projects/projectViewModel";
 import {
   compareScenarios,
+  getNodeDeletionImpact,
+  getSnapshotDrift,
   restoreScenario,
   saveScenario,
+  summarizeRestore,
 } from "../src/features/scenarios/scenarioViewModel";
 import { simulateProject } from "../src/shared/domain/simulation";
 import { EXAMPLE_PROJECT } from "../src/shared/domain/types";
@@ -85,5 +88,104 @@ describe("project and scenario view models", () => {
     expect(comparison.deltaMs).toBeGreaterThan(0);
     expect(comparison.changes.join(" ")).toContain("并发上限");
     expect(comparison.changes.join(" ")).toContain("耗时");
+  });
+
+  it("reports which snapshots still hold a node before it is deleted", () => {
+    const withSnapshot = saveScenario(
+      EXAMPLE_PROJECT,
+      simulateProject(EXAMPLE_PROJECT),
+      "完整链路",
+    );
+    const trimmed = {
+      ...withSnapshot,
+      nodes: withSnapshot.nodes.filter((node) => node.id !== "recommend"),
+    };
+    const afterTrim = saveScenario(
+      trimmed,
+      simulateProject(trimmed),
+      "去掉推荐",
+    );
+    const impact = getNodeDeletionImpact(afterTrim, "recommend");
+    expect(impact.dependentNames).toEqual([]);
+    expect(impact.fallbackUserNames).toEqual([]);
+    expect(impact.scenarioNames).toEqual(["完整链路"]);
+    const refs = getNodeDeletionImpact(withSnapshot, "session");
+    expect(refs.dependentNames).toEqual(
+      expect.arrayContaining(["用户资料", "商品目录"]),
+    );
+    expect(refs.fallbackUserNames).toEqual([]);
+    const fallbackRefs = getNodeDeletionImpact(withSnapshot, "catalog");
+    expect(fallbackRefs.fallbackUserNames).toEqual(["个性推荐"]);
+  });
+
+  it("summarizes what a restore brings back and what it removes", () => {
+    const saved = saveScenario(
+      EXAMPLE_PROJECT,
+      simulateProject(EXAMPLE_PROJECT),
+      "基线",
+    );
+    const snapshot = saved.scenarios[0];
+    if (!snapshot) throw new Error("Scenario fixture should be saved");
+    const drifted = {
+      ...saved,
+      concurrencyLimit: 2,
+      nodes: [
+        ...saved.nodes
+          .filter((node) => node.id !== "recommend")
+          .map((node) =>
+            node.id === "session" ? { ...node, durationMs: 999 } : node,
+          ),
+        {
+          ...saved.nodes[0]!,
+          id: "extra",
+          name: "临时节点",
+          dependencyIds: [],
+          fallbackNodeId: undefined,
+        },
+      ],
+    };
+    const summary = summarizeRestore(drifted, snapshot);
+    expect(summary.revivedNames).toEqual(["个性推荐"]);
+    expect(summary.removedNames).toEqual(["临时节点"]);
+    expect(summary.updatedNames).toEqual(["会话校验"]);
+    expect(summary.concurrencyChanged).toBe(true);
+    const restored = restoreScenario(drifted, snapshot.id);
+    expect(summarizeRestore(restored, snapshot)).toEqual({
+      revivedNames: [],
+      removedNames: [],
+      updatedNames: [],
+      concurrencyChanged: false,
+    });
+  });
+
+  it("measures node-set drift between a snapshot and the current graph", () => {
+    const saved = saveScenario(
+      EXAMPLE_PROJECT,
+      simulateProject(EXAMPLE_PROJECT),
+      "基线",
+    );
+    const snapshot = saved.scenarios[0];
+    if (!snapshot) throw new Error("Scenario fixture should be saved");
+    const drifted = {
+      ...saved,
+      nodes: [
+        ...saved.nodes.filter((node) => node.id !== "recommend"),
+        {
+          ...saved.nodes[0]!,
+          id: "extra",
+          name: "临时节点",
+          dependencyIds: [],
+          fallbackNodeId: undefined,
+        },
+      ],
+    };
+    expect(getSnapshotDrift(drifted, snapshot)).toEqual({
+      deletedFromGraph: ["个性推荐"],
+      addedToGraph: ["临时节点"],
+    });
+    expect(getSnapshotDrift(saved, snapshot)).toEqual({
+      deletedFromGraph: [],
+      addedToGraph: [],
+    });
   });
 });

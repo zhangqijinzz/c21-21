@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Trash2 } from "lucide-react";
 import type { LatencyProject, RequestNode } from "../../shared/domain/types";
 import type { EditableNodeField } from "./graphViewModel";
+import { getNodeDeletionImpact } from "../scenarios/scenarioViewModel";
 
 interface Props {
   project: LatencyProject;
@@ -33,6 +34,9 @@ export default function NodeInspector({
   onDependency,
 }: Props) {
   const [pendingDelete, setPendingDelete] = useState(false);
+  const deleteImpact = pendingDelete
+    ? getNodeDeletionImpact(project, node.id)
+    : undefined;
   return (
     <>
       <aside className="inspector">
@@ -133,6 +137,35 @@ export default function NodeInspector({
             </span>
             <h2 id="delete-node-title">移除这个请求节点？</h2>
             <p>“{node.name}”会从链路移除，其他节点对它的依赖也会清除。</p>
+            {deleteImpact &&
+              (deleteImpact.dependentNames.length > 0 ||
+                deleteImpact.fallbackUserNames.length > 0) && (
+                <ul className="dialog-impact">
+                  {deleteImpact.dependentNames.length > 0 && (
+                    <li>
+                      {deleteImpact.dependentNames.length} 个节点依赖它（
+                      {deleteImpact.dependentNames.join("、")}
+                      ），依赖关系将被清除。
+                    </li>
+                  )}
+                  {deleteImpact.fallbackUserNames.length > 0 && (
+                    <li>
+                      {deleteImpact.fallbackUserNames.length}{" "}
+                      个节点以它为降级目标（
+                      {deleteImpact.fallbackUserNames.join("、")}
+                      ），降级设置将被清除。
+                    </li>
+                  )}
+                </ul>
+              )}
+            {deleteImpact && deleteImpact.scenarioNames.length > 0 && (
+              <p className="dialog-warning">
+                {deleteImpact.scenarioNames.length}{" "}
+                份已保存的方案快照仍包含此节点（
+                {deleteImpact.scenarioNames.join("、")}
+                ）；删除后恢复这些方案会把它带回链路，对比中也会作为差异节点出现。
+              </p>
+            )}
             <div>
               <button
                 className="button button-neutral"

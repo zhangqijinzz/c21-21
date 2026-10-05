@@ -11,7 +11,11 @@ import type {
   LatencyProject,
   ScenarioSnapshot,
 } from "../../shared/domain/types";
-import type { ScenarioComparison } from "./scenarioViewModel";
+import {
+  getSnapshotDrift,
+  type ScenarioComparison,
+  type SnapshotDrift,
+} from "./scenarioViewModel";
 
 interface Props {
   project: LatencyProject;
@@ -31,6 +35,27 @@ function formatDuration(value: number): string {
     : `${(value / 1000).toFixed(2)} s`;
 }
 
+function DriftNote({ label, drift }: { label: string; drift: SnapshotDrift }) {
+  if (!drift.deletedFromGraph.length && !drift.addedToGraph.length) return null;
+  return (
+    <div className="drift-note">
+      <strong>{label}</strong>
+      {drift.deletedFromGraph.length > 0 && (
+        <span>
+          含 {drift.deletedFromGraph.length} 个当前已删除节点：
+          {drift.deletedFromGraph.join("、")}
+        </span>
+      )}
+      {drift.addedToGraph.length > 0 && (
+        <span>
+          缺少 {drift.addedToGraph.length} 个当前节点：
+          {drift.addedToGraph.join("、")}
+        </span>
+      )}
+    </div>
+  );
+}
+
 export default function ScenarioPanel({
   project,
   onSave,
@@ -46,6 +71,18 @@ export default function ScenarioPanel({
   const delta = comparisonResult?.deltaMs ?? 0;
   const outcome = comparisonResult?.outcome ?? "equal";
   const changes = comparisonResult?.changes ?? [];
+  const baselineDrift = baseline
+    ? getSnapshotDrift(project, baseline)
+    : undefined;
+  const comparisonDrift = comparison
+    ? getSnapshotDrift(project, comparison)
+    : undefined;
+  const deletedNodeNames = [
+    ...(baselineDrift?.deletedFromGraph ?? []),
+    ...(comparisonDrift?.deletedFromGraph ?? []),
+  ];
+  const involvesDeletedNode = (change: string) =>
+    deletedNodeNames.some((nodeName) => change.startsWith(`${nodeName} ·`));
   return (
     <section className="module-page scenarios-page">
       <div className="module-heading">
@@ -155,6 +192,12 @@ export default function ScenarioPanel({
               </article>
             </div>
           )}
+          {baselineDrift && comparisonDrift && (
+            <div className="drift-summary">
+              <DriftNote label="基准方案" drift={baselineDrift} />
+              <DriftNote label="对照方案" drift={comparisonDrift} />
+            </div>
+          )}
           <div className="snapshot-list">
             <div className="snapshot-heading">
               <span className="section-label">已保存快照</span>
@@ -203,9 +246,16 @@ export default function ScenarioPanel({
           {changes.length > 0 && (
             <div className="change-summary">
               <strong>参数变化</strong>
-              {changes.map((change) => (
-                <span key={change}>{change}</span>
-              ))}
+              {changes.map((change) =>
+                involvesDeletedNode(change) ? (
+                  <span key={change} className="change-deleted">
+                    {change}
+                    <em>当前图已删除</em>
+                  </span>
+                ) : (
+                  <span key={change}>{change}</span>
+                ),
+              )}
             </div>
           )}
         </>

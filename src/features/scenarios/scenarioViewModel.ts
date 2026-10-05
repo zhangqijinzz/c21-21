@@ -78,6 +78,86 @@ export function compareScenarios(
   };
 }
 
+export interface NodeDeletionImpact {
+  dependentNames: string[];
+  fallbackUserNames: string[];
+  scenarioNames: string[];
+}
+
+export function getNodeDeletionImpact(
+  project: LatencyProject,
+  nodeId: string,
+): NodeDeletionImpact {
+  return {
+    dependentNames: project.nodes
+      .filter((node) => node.dependencyIds.includes(nodeId))
+      .map((node) => node.name),
+    fallbackUserNames: project.nodes
+      .filter((node) => node.fallbackNodeId === nodeId)
+      .map((node) => node.name),
+    scenarioNames: project.scenarios
+      .filter((scenario) => scenario.nodes.some((node) => node.id === nodeId))
+      .map((scenario) => scenario.name),
+  };
+}
+
+export interface RestoreSummary {
+  revivedNames: string[];
+  removedNames: string[];
+  updatedNames: string[];
+  concurrencyChanged: boolean;
+}
+
+export function summarizeRestore(
+  project: LatencyProject,
+  snapshot: ScenarioSnapshot,
+): RestoreSummary {
+  const currentById = new Map(project.nodes.map((node) => [node.id, node]));
+  const snapshotIds = new Set(snapshot.nodes.map((node) => node.id));
+  const revivedNames: string[] = [];
+  const updatedNames: string[] = [];
+  for (const node of snapshot.nodes) {
+    const current = currentById.get(node.id);
+    if (!current) {
+      revivedNames.push(node.name);
+    } else if (
+      current.name !== node.name ||
+      describeNodeChanges(current, node).length > 0
+    ) {
+      updatedNames.push(node.name);
+    }
+  }
+  return {
+    revivedNames,
+    removedNames: project.nodes
+      .filter((node) => !snapshotIds.has(node.id))
+      .map((node) => node.name),
+    updatedNames,
+    concurrencyChanged: project.concurrencyLimit !== snapshot.concurrencyLimit,
+  };
+}
+
+export interface SnapshotDrift {
+  deletedFromGraph: string[];
+  addedToGraph: string[];
+}
+
+export function getSnapshotDrift(
+  project: LatencyProject,
+  snapshot: ScenarioSnapshot,
+): SnapshotDrift {
+  const currentIds = new Set(project.nodes.map((node) => node.id));
+  const snapshotIds = new Set(snapshot.nodes.map((node) => node.id));
+  return {
+    deletedFromGraph: snapshot.nodes
+      .filter((node) => !currentIds.has(node.id))
+      .map((node) => node.name),
+    addedToGraph: project.nodes
+      .filter((node) => !snapshotIds.has(node.id))
+      .map((node) => node.name),
+  };
+}
+
 export function saveScenario(
   project: LatencyProject,
   result: SimulationResult,

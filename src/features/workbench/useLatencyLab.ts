@@ -21,9 +21,11 @@ import {
 } from "../graph-editor/graphViewModel";
 import {
   compareScenarios,
+  getNodeDeletionImpact,
   removeScenario,
   restoreScenario,
   saveScenario,
+  summarizeRestore,
   type ScenarioComparison,
 } from "../scenarios/scenarioViewModel";
 import { removeProject, updateProject } from "../projects/projectViewModel";
@@ -192,7 +194,13 @@ export function useLatencyLab() {
   );
   const deleteNode = useCallback(
     (id: string) => {
-      if (activeProject) editProject(removeRequestNode(activeProject, id));
+      if (!activeProject) return;
+      const impact = getNodeDeletionImpact(activeProject, id);
+      editProject(removeRequestNode(activeProject, id));
+      if (impact.scenarioNames.length)
+        setNotice(
+          `节点已删除；${impact.scenarioNames.length} 份方案快照仍保留该节点（${impact.scenarioNames.join("、")}），恢复这些方案时会将其带回。`,
+        );
     },
     [activeProject, editProject],
   );
@@ -256,7 +264,30 @@ export function useLatencyLab() {
   );
   const restoreSavedScenario = useCallback(
     (id: string) => {
-      if (activeProject) editProject(restoreScenario(activeProject, id));
+      if (!activeProject) return;
+      const snapshot = activeProject.scenarios.find(
+        (scenario) => scenario.id === id,
+      );
+      if (!snapshot) return;
+      const summary = summarizeRestore(activeProject, snapshot);
+      editProject(restoreScenario(activeProject, id));
+      const parts: string[] = [];
+      if (summary.revivedNames.length)
+        parts.push(
+          `带回 ${summary.revivedNames.length} 个已删除节点（${summary.revivedNames.join("、")}）`,
+        );
+      if (summary.removedNames.length)
+        parts.push(
+          `移除 ${summary.removedNames.length} 个当前节点（${summary.removedNames.join("、")}）`,
+        );
+      if (summary.updatedNames.length)
+        parts.push(`还原 ${summary.updatedNames.length} 个节点的参数`);
+      if (summary.concurrencyChanged) parts.push("并发上限已还原");
+      setNotice(
+        parts.length
+          ? `已恢复方案“${snapshot.name}”：${parts.join("；")}。`
+          : `已恢复方案“${snapshot.name}”，与当前链路一致。`,
+      );
     },
     [activeProject, editProject],
   );
